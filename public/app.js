@@ -1,4 +1,4 @@
-// public/app.js
+﻿// public/app.js
 
 /* =========================
    0) 常量 & LocalStorage Keys
@@ -9,7 +9,9 @@ const LS = {
     events: "heartlink_events_v1",
     timeline: "heartlink_timeline_v1",
     messages: "heartlink_messages_v1",
-    pokeSince: "heartlink_poke_since_v1"
+    pokeSince: "heartlink_poke_since_v1",
+    coupleChat: "heartlink_couple_chat_v1",
+    deviceId: "heartlink_device_id_v1"
 };
 
 // ---- 云函数路径（如果你文件名不一样，只改这里） ----
@@ -17,6 +19,9 @@ const CLOUD_API = {
     get: "/api/sync",
     set: "/api/sync",
 };
+
+const COUPLE_WS_URL = window.COUPLE_WS_URL
+    || `${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:3001`;
 
 // 【插入代码 1/3】云同步配置（智能轮询）
 const POLL_INTERVAL_ACTIVE = 2000; // 活跃时 2秒
@@ -31,12 +36,13 @@ const DEFAULTS = {
     settings: {
         togetherSince: "",
         nextMeetAt: "2026-02-08T20:00:00+08:00",
+        herFavoriteDrink: "喜茶-多肉葡萄",
         coupleCode: "",
         avatarBoy: "",
         avatarGirl: "",
         bgTheme: "warm",
         bgImage: "",
-        likes: ["", "", "", "", "", ""]
+        likes: ["", "", "", "", ""]
     },
     mood: {
         weather: "thunderstorm", // sun | rain | thunderstorm
@@ -73,6 +79,32 @@ let USER_TOKEN = localStorage.getItem("heartlink_token") || "";
 let USER_USER = safeJSONParse(localStorage.getItem("heartlink_user"), null);
 function uid(prefix = "id") {
     return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+}
+function getDeviceId() {
+    let v = localStorage.getItem(LS.deviceId);
+    if (!v) {
+        v = uid("dev");
+        localStorage.setItem(LS.deviceId, v);
+    }
+    return v;
+}
+
+function loadCoupleChatState() {
+    const raw = loadStore(LS.coupleChat, {});
+    const messages = Array.isArray(raw?.messages) ? raw.messages : [];
+    return {
+        messages,
+        lastSeq: Math.max(0, Number(raw?.lastSeq || 0)),
+        myReadSeq: Math.max(0, Number(raw?.myReadSeq || 0)),
+        partnerReadSeq: Math.max(0, Number(raw?.partnerReadSeq || 0)),
+        serverSeq: Math.max(0, Number(raw?.serverSeq || 0)),
+        deviceId: String(raw?.deviceId || getDeviceId()),
+        ws: null,
+        authed: false,
+        connecting: false,
+        reconnectTimer: null,
+        lastSyncAt: 0
+    };
 }
 
 function pad2(n) { return String(n).padStart(2, "0"); }
@@ -152,23 +184,6 @@ function normalizeCloudEnvelope(payload) {
     // 2) { updatedAt, data }
     if (payload && typeof payload === "object" && "data" in payload) return payload;
     return { updatedAt: 0, data: payload ?? null };
-}
-
-function normalizeLikes(list, legacyValue = "") {
-    const arr = Array.isArray(list) ? list.map((s) => String(s || "").trim()) : [];
-    const normalized = arr.length <= 5 ? ["", ...arr] : arr;
-    const legacy = String(legacyValue || "").trim();
-    if (legacy && !normalized[0]) normalized[0] = legacy;
-    while (normalized.length < 6) normalized.push("");
-    return normalized.slice(0, 6);
-}
-
-function normalizeSettingsLikes() {
-    if (!state || !state.settings) return;
-    const legacy = "herFavoriteDrink" in state.settings ? state.settings.herFavoriteDrink : "";
-    const likes = normalizeLikes(state.settings.likes, legacy);
-    state.settings.likes = likes;
-    if ("herFavoriteDrink" in state.settings) delete state.settings.herFavoriteDrink;
 }
 
 /* =========================
@@ -300,6 +315,7 @@ const state = {
     events: loadStore(LS.events, DEFAULTS.events),
     timeline: loadStore(LS.timeline, DEFAULTS.timeline),
     messages: loadStore(LS.messages, []),
+    coupleChat: loadCoupleChatState(),
 
     calendarView: {
         monthCursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -358,6 +374,12 @@ const dom = {
     send: el("js-send"),
     chips: el("js-chips"),
     chatClear: el("chat-clear"),
+    coupleMessages: el("couple-messages"),
+    coupleInput: el("couple-input"),
+    coupleSend: el("couple-send"),
+    couplePlus: el("buttonGame"),
+    couplePanel: el("couple-panel"),
+    couplePanelBackdrop: el("couple-panel-backdrop"),
 
     // tabs
     tabCalendar: el("tab-calendar"),
@@ -370,6 +392,7 @@ const dom = {
     pageCalendar: el("page-calendar"),
     pageDiary: el("page-diary"),
     pageChat: el("page-chat"),
+    pageCoupleChat: el("page-couple-chat"),
     pageSettings: el("page-settings"),
 
     // calendar ui
@@ -570,8 +593,11 @@ let homeTipTimer = null;
 let homeTipIndex = 0;
 
 function buildHomeTips() {
-    const likes = normalizeLikes(state.settings.likes);
-    return likes.map((s) => String(s || "").trim()).filter(Boolean);
+    const likes = Array.isArray(state.settings.likes) ? state.settings.likes : [];
+    const list = likes.map((s) => String(s || "").trim()).filter(Boolean);
+    const drink = String(state.settings.herFavoriteDrink || "").trim();
+    if (drink) list.unshift(`${getPartnerPronoun()}喜欢的 ${drink}`);
+    return list;
 }
 
 function startHomeTipLoop() {
@@ -780,10 +806,7 @@ function applyCloudSettings(remote) {
         ...state.settings,
         togetherSince: remoteSettings.togetherSince || state.settings.togetherSince,
         nextMeetAt: remoteSettings.nextMeetAt || state.settings.nextMeetAt,
-        likes: normalizeLikes(
-            Array.isArray(remoteSettings.likes) ? remoteSettings.likes : state.settings.likes,
-            remoteSettings.herFavoriteDrink ?? state.settings.herFavoriteDrink
-        ),
+        herFavoriteDrink: (remoteSettings.herFavoriteDrink ?? state.settings.herFavoriteDrink) || "",
         // coupleCode 由登录态决定（这里保留本地展示）
         coupleCode: state.settings.coupleCode,
         avatarBoy: remoteSettings.avatarBoy ?? state.settings.avatarBoy ?? "",
@@ -792,7 +815,6 @@ function applyCloudSettings(remote) {
         bgImage: remoteSettings.bgImage ?? state.settings.bgImage ?? "",
     };
 
-    if ("herFavoriteDrink" in merged) delete merged.herFavoriteDrink;
     state.settings = merged;
     saveStore(LS.settings, state.settings);
     refreshTopUI();
@@ -863,7 +885,6 @@ async function bootstrapCloudIfEmpty() {
             await cloudSet("settings", {
                 togetherSince: state.settings.togetherSince,
                 nextMeetAt: state.settings.nextMeetAt,
-                likes: normalizeLikes(state.settings.likes),
                 updatedAt: nowTs(),
             });
         }
@@ -926,6 +947,284 @@ function handleVisibility() {
 function startCloudPolling() { startSmartPolling();
     startPokePolling(); }
 function stopCloudPolling() { stopSmartPolling(); }
+
+/* =========================
+   5.8) Couple Chat (WS)
+   ========================= */
+function saveCoupleChatState() {
+    const payload = {
+        messages: (state.coupleChat.messages || []).slice(-500),
+        lastSeq: state.coupleChat.lastSeq || 0,
+        myReadSeq: state.coupleChat.myReadSeq || 0,
+        partnerReadSeq: state.coupleChat.partnerReadSeq || 0,
+        serverSeq: state.coupleChat.serverSeq || 0,
+        deviceId: state.coupleChat.deviceId || getDeviceId()
+    };
+    saveStore(LS.coupleChat, payload);
+}
+
+function getMyUserId() {
+    return String(USER_USER?.id || USER_TOKEN || "").trim();
+}
+
+function coupleChatIsActive() {
+    return !!(dom.pageCoupleChat && !dom.pageCoupleChat.classList.contains("hidden"));
+}
+
+function coupleSortKey(m) {
+    const seq = Number(m.seq || 0);
+    if (seq > 0) return seq;
+    return 1e15 + Number(m.local_ts || 0);
+}
+
+function upsertCoupleMessage(msg) {
+    if (!msg) return;
+    const list = state.coupleChat.messages || [];
+    const idx = list.findIndex(m =>
+        (msg.message_id && m.message_id === msg.message_id)
+        || (msg.client_msg_id && m.client_msg_id === msg.client_msg_id)
+    );
+    if (idx >= 0) list[idx] = { ...list[idx], ...msg };
+    else list.push(msg);
+    state.coupleChat.messages = list;
+}
+
+function refreshCoupleSeq() {
+    let maxSeq = Number(state.coupleChat.lastSeq || 0);
+    for (const m of state.coupleChat.messages || []) {
+        const s = Number(m.seq || 0);
+        if (s > maxSeq) maxSeq = s;
+    }
+    state.coupleChat.lastSeq = maxSeq;
+}
+
+function getCoupleStatusText(m) {
+    const myId = getMyUserId();
+    if (!myId || String(m.sender_id || "") !== String(myId)) return "";
+    if (m.status === "failed") return "发送失败";
+    if (!m.seq) return "发送中";
+    if ((state.coupleChat.partnerReadSeq || 0) >= Number(m.seq || 0)) return "已读";
+    return "已送达";
+}
+
+function isEmojiOnlyText(t) {
+    const s = String(t || "").trim();
+    if (!s) return false;
+    const noSpace = s.replace(/\s+/g, "");
+    return /^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]+$/u.test(noSpace);
+}
+
+function renderCoupleMessages() {
+    const box = dom.coupleMessages;
+    if (!box) return;
+    const list = (state.coupleChat.messages || []).slice().sort((a, b) => {
+        const ka = coupleSortKey(a);
+        const kb = coupleSortKey(b);
+        if (ka === kb) return Number(a.local_ts || 0) - Number(b.local_ts || 0);
+        return ka - kb;
+    });
+
+    box.innerHTML = "";
+    if (list.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "chat-time-stamp";
+        empty.textContent = "暂无消息";
+        box.appendChild(empty);
+        return;
+    }
+
+    const myId = getMyUserId();
+    const roles = list.map(m => (String(m.sender_id || "") === String(myId) ? "me" : "them"));
+
+    for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        const role = roles[i];
+        const isLastInGroup = (i === list.length - 1) || roles[i + 1] !== role;
+
+        const wrap = document.createElement("div");
+        wrap.className = `couple-msg ${role}${isLastInGroup ? " last-in-group" : ""}`;
+        if (isEmojiOnlyText(m.content)) wrap.classList.add("emoji-only");
+        if (m.client_msg_id) wrap.dataset.clientMsgId = m.client_msg_id;
+        if (m.message_id) wrap.dataset.messageId = m.message_id;
+        if (m.seq) wrap.dataset.seq = String(m.seq);
+
+        const bubble = document.createElement("div");
+        bubble.className = "couple-bubble";
+        bubble.textContent = String(m.content || "");
+        wrap.appendChild(bubble);
+
+        if (role === "me") {
+            const statusEl = document.createElement("div");
+            statusEl.className = "msg-status";
+            statusEl.textContent = getCoupleStatusText(m);
+            wrap.appendChild(statusEl);
+        }
+
+        box.appendChild(wrap);
+    }
+
+    box.scrollTop = box.scrollHeight;
+}
+
+function sendCoupleWs(payload) {
+    const ws = state.coupleChat.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify(payload));
+    return true;
+}
+
+function syncCoupleFromServer() {
+    if (!state.coupleChat.authed) return;
+    sendCoupleWs({ type: "sync", last_seq: state.coupleChat.lastSeq || 0, limit: 200 });
+}
+
+function markCoupleReadIfNeeded() {
+    if (!state.coupleChat.authed) return;
+    const myId = getMyUserId();
+    if (!myId) return;
+    let maxSeq = 0;
+    for (const m of state.coupleChat.messages || []) {
+        if (String(m.sender_id || "") === String(myId)) continue;
+        const s = Number(m.seq || 0);
+        if (s > maxSeq) maxSeq = s;
+    }
+    if (maxSeq <= Number(state.coupleChat.myReadSeq || 0)) return;
+    state.coupleChat.myReadSeq = maxSeq;
+    sendCoupleWs({ type: "read", max_read_seq: maxSeq });
+    saveCoupleChatState();
+    renderCoupleMessages();
+}
+
+function handleCoupleWsMessage(msg) {
+    const type = String(msg?.type || "").trim();
+    if (type === "auth_ok") {
+        state.coupleChat.authed = true;
+        syncCoupleFromServer();
+        if (coupleChatIsActive()) markCoupleReadIfNeeded();
+        return;
+    }
+
+    if (type === "ack") {
+        upsertCoupleMessage({
+            client_msg_id: msg.client_msg_id,
+            message_id: msg.message_id,
+            seq: Number(msg.seq || 0),
+            server_ts: Number(msg.server_ts || 0),
+            status: "sent"
+        });
+        refreshCoupleSeq();
+        saveCoupleChatState();
+        renderCoupleMessages();
+        return;
+    }
+
+    if (type === "message") {
+        upsertCoupleMessage({
+            message_id: msg.message_id,
+            client_msg_id: msg.client_msg_id,
+            seq: Number(msg.seq || 0),
+            server_ts: Number(msg.server_ts || 0),
+            sender_id: String(msg.sender_id || ""),
+            receiver_id: String(msg.receiver_id || ""),
+            content: msg.content || "",
+            device_id: msg.device_id || ""
+        });
+        refreshCoupleSeq();
+        saveCoupleChatState();
+        renderCoupleMessages();
+        if (coupleChatIsActive()) markCoupleReadIfNeeded();
+        return;
+    }
+
+    if (type === "sync") {
+        const list = Array.isArray(msg.messages) ? msg.messages : [];
+        for (const r of list) {
+            upsertCoupleMessage({
+                message_id: r.message_id,
+                client_msg_id: r.client_msg_id,
+                seq: Number(r.seq || 0),
+                server_ts: Number(r.server_ts || 0),
+                sender_id: String(r.sender_id || ""),
+                receiver_id: String(r.receiver_id || ""),
+                content: r.content || "",
+                device_id: r.device_id || ""
+            });
+        }
+        state.coupleChat.serverSeq = Number(msg.server_seq || 0);
+        state.coupleChat.myReadSeq = Math.max(state.coupleChat.myReadSeq || 0, Number(msg.my_read_seq || 0));
+        state.coupleChat.partnerReadSeq = Math.max(state.coupleChat.partnerReadSeq || 0, Number(msg.partner_read_seq || 0));
+        refreshCoupleSeq();
+        saveCoupleChatState();
+        renderCoupleMessages();
+        if (coupleChatIsActive()) markCoupleReadIfNeeded();
+        return;
+    }
+
+    if (type === "read") {
+        state.coupleChat.partnerReadSeq = Math.max(state.coupleChat.partnerReadSeq || 0, Number(msg.max_read_seq || 0));
+        saveCoupleChatState();
+        renderCoupleMessages();
+        return;
+    }
+
+    if (type === "read_ack") {
+        state.coupleChat.myReadSeq = Math.max(state.coupleChat.myReadSeq || 0, Number(msg.max_read_seq || 0));
+        saveCoupleChatState();
+        renderCoupleMessages();
+        return;
+    }
+}
+
+function scheduleCoupleReconnect() {
+    if (state.coupleChat.reconnectTimer) return;
+    if (!USER_TOKEN) return;
+    state.coupleChat.reconnectTimer = setTimeout(() => {
+        state.coupleChat.reconnectTimer = null;
+        connectCoupleWs();
+    }, 2000);
+}
+
+function connectCoupleWs() {
+    if (!USER_TOKEN) return;
+    const ws = state.coupleChat.ws;
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+    const sock = new WebSocket(COUPLE_WS_URL);
+    state.coupleChat.ws = sock;
+    state.coupleChat.connecting = true;
+    state.coupleChat.authed = false;
+
+    sock.addEventListener("open", () => {
+        state.coupleChat.connecting = false;
+        sendCoupleWs({ type: "auth", token: USER_TOKEN });
+    });
+    sock.addEventListener("message", (ev) => {
+        let payload = null;
+        try {
+            payload = JSON.parse(String(ev.data || ""));
+        } catch (_) {
+            return;
+        }
+        handleCoupleWsMessage(payload);
+    });
+    sock.addEventListener("close", () => {
+        state.coupleChat.connecting = false;
+        state.coupleChat.authed = false;
+        scheduleCoupleReconnect();
+    });
+    sock.addEventListener("error", () => {
+        scheduleCoupleReconnect();
+    });
+}
+
+function onCoupleChatVisible() {
+    renderCoupleMessages();
+    connectCoupleWs();
+    if (state.coupleChat.authed) {
+        syncCoupleFromServer();
+        markCoupleReadIfNeeded();
+    }
+}
 /* =========================
    5.9) Poke
    - POST /api/poke ??
@@ -1244,8 +1543,8 @@ async function callAI(userText) {
     const payload = {
         mood: {
             ...state.mood,
+            herFavoriteDrink: state.settings.herFavoriteDrink,
         },
-        likes: normalizeLikes(state.settings.likes),
         messages: state.messages.slice(-12),
         userText,
         token: USER_TOKEN,
@@ -1315,7 +1614,7 @@ function initTabs() {
         { tabId: "tab-home", pageId: "page-home" },
         { tabId: "tab-calendar", pageId: "page-calendar" },
         { tabId: "tab-diary", pageId: "page-diary" },
-        { tabId: "tab-chat", pageId: "page-chat" },
+        { tabId: "tab-chat", pageId: "page-couple-chat" },
         { tabId: "tab-settings", pageId: "page-settings" }
     ];
 
@@ -1351,6 +1650,7 @@ function initTabs() {
         if (tabId === "tab-chat") {
             renderAllMessages();
             refreshTopUI();
+            onCoupleChatVisible();
         }
     }
 
@@ -1493,8 +1793,7 @@ function renderEventsForSelectedDate() {
                         updatedAt: nowTs(),
                         data: {
                             togetherSince: state.settings.togetherSince,
-                            nextMeetAt: state.settings.nextMeetAt,
-                            likes: normalizeLikes(state.settings.likes)
+                            nextMeetAt: state.settings.nextMeetAt
                         }
                     }));
                 }
@@ -1550,8 +1849,7 @@ function addEventForSelectedDate({ title, time, isReunion }) {
             updatedAt: nowTs(),
             data: {
                 togetherSince: state.settings.togetherSince,
-                nextMeetAt: state.settings.nextMeetAt,
-                likes: normalizeLikes(state.settings.likes)
+                nextMeetAt: state.settings.nextMeetAt
             }
         }));
     }
@@ -1677,20 +1975,19 @@ function addTimeline(text, tag = null) {
    11) Settings（保存/重置/导入导出/清空）+ 绑定云同步
    ========================= */
 function syncSettingsUI() {
-    normalizeSettingsLikes();
     dom.stTogether.value = state.settings.togetherSince;
     dom.stNextMeet.value = toLocalDatetimeValue(state.settings.nextMeetAt);
-    dom.stDrink.value = (state.settings.likes && state.settings.likes[0]) ? state.settings.likes[0] : "";
+    dom.stDrink.value = state.settings.herFavoriteDrink || "";
     dom.stCoupleCode.value = state.settings.coupleCode || "";
     // 登录后：匹配码来自后端关系，不建议在前端手改
     dom.stCoupleCode.disabled = false;
     if (dom.coupleStatus) dom.coupleStatus.textContent = "已保存";
-    const likes = normalizeLikes(state.settings.likes);
-    if (dom.stLike1) dom.stLike1.value = likes[1] || "";
-    if (dom.stLike2) dom.stLike2.value = likes[2] || "";
-    if (dom.stLike3) dom.stLike3.value = likes[3] || "";
-    if (dom.stLike4) dom.stLike4.value = likes[4] || "";
-    if (dom.stLike5) dom.stLike5.value = likes[5] || "";
+    const likes = Array.isArray(state.settings.likes) ? state.settings.likes : ["", "", "", "", ""];
+    if (dom.stLike1) dom.stLike1.value = likes[0] || "";
+    if (dom.stLike2) dom.stLike2.value = likes[1] || "";
+    if (dom.stLike3) dom.stLike3.value = likes[2] || "";
+    if (dom.stLike4) dom.stLike4.value = likes[3] || "";
+    if (dom.stLike5) dom.stLike5.value = likes[4] || "";
 
     // UI 个性化
     if (dom.stBgTheme) dom.stBgTheme.value = state.settings.bgTheme || "warm";
@@ -1707,25 +2004,24 @@ function saveSettingsFromUI() {
     const together = (dom.stTogether.value || "").trim();
     const nextMeetLocal = dom.stNextMeet.value;
     const nextMeetISO = nextMeetLocal ? fromLocalDatetimeValue(nextMeetLocal) : DEFAULTS.settings.nextMeetAt;
-    const likes = normalizeLikes([
-        dom.stDrink?.value,
-        dom.stLike1?.value,
-        dom.stLike2?.value,
-        dom.stLike3?.value,
-        dom.stLike4?.value,
-        dom.stLike5?.value
-    ]);
 
     // coupleCode 在 V4 里由后端关系决定（这里仅用于展示，不影响同步）
     state.settings = {
         togetherSince: together,
         nextMeetAt: nextMeetISO,
+        herFavoriteDrink: (dom.stDrink.value || DEFAULTS.settings.herFavoriteDrink).trim(),
         coupleCode: (dom.stCoupleCode.value || "").trim(),
         avatarBoy: state.settings.avatarBoy || "",
         avatarGirl: state.settings.avatarGirl || "",
         bgTheme: state.settings.bgTheme || "warm",
         bgImage: state.settings.bgImage || "",
-        likes
+        likes: [
+            dom.stLike1?.value,
+            dom.stLike2?.value,
+            dom.stLike3?.value,
+            dom.stLike4?.value,
+            dom.stLike5?.value
+        ].map((s) => String(s || "").trim())
     };
 
     saveStore(LS.settings, state.settings);
@@ -1739,11 +2035,12 @@ function saveSettingsFromUI() {
             updatedAt: nowTs(),
             togetherSince: state.settings.togetherSince,
             nextMeetAt: state.settings.nextMeetAt,
+            herFavoriteDrink: state.settings.herFavoriteDrink,
             avatarBoy: state.settings.avatarBoy || "",
             avatarGirl: state.settings.avatarGirl || "",
             bgTheme: state.settings.bgTheme || "warm",
             bgImage: state.settings.bgImage || "",
-            likes: normalizeLikes(state.settings.likes)
+            likes: Array.isArray(state.settings.likes) ? state.settings.likes : ["", "", "", "", ""]
         }));
     }
 }
@@ -1751,7 +2048,7 @@ function saveSettingsFromUI() {
 function resetSettings() {
     stopCloudPolling();
 
-    state.settings = { ...DEFAULTS.settings, avatarBoy:"", avatarGirl:"", bgTheme:"warm", bgImage:"", likes: normalizeLikes(DEFAULTS.settings.likes) };
+    state.settings = { ...DEFAULTS.settings, avatarBoy:"", avatarGirl:"", bgTheme:"warm", bgImage:"", likes: ["", "", "", "", ""] };
     saveStore(LS.settings, state.settings);
     syncSettingsUI();
     refreshTopUI();
@@ -1763,11 +2060,12 @@ function resetSettings() {
             updatedAt: nowTs(),
             togetherSince: state.settings.togetherSince,
             nextMeetAt: state.settings.nextMeetAt,
+            herFavoriteDrink: state.settings.herFavoriteDrink,
             avatarBoy: state.settings.avatarBoy || "",
             avatarGirl: state.settings.avatarGirl || "",
             bgTheme: state.settings.bgTheme || "warm",
             bgImage: state.settings.bgImage || "",
-            likes: normalizeLikes(state.settings.likes)
+            likes: Array.isArray(state.settings.likes) ? state.settings.likes : ["", "", "", "", ""]
         }));
     }
 }
@@ -1846,18 +2144,18 @@ function wipeAll() {
     renderCalendar();
     renderEventsForSelectedDate();
     renderTimeline();
+    renderCoupleMessages();
     syncSettingsUI();
     syncMoodEditorUI();
     renderSettingsDebug();
 }
 
 function renderSettingsDebug() {
-    const likesText = normalizeLikes(state.settings.likes).filter(Boolean).join(", ");
     const lines = [
         `coupleCode: ${state.settings.coupleCode || "-"}`,
         `togetherSince: ${state.settings.togetherSince}`,
         `nextMeetAt: ${new Date(state.settings.nextMeetAt).toString()}`,
-        `likes: ${likesText || "-"}`,
+        `drink: ${state.settings.herFavoriteDrink || "-"}`,
         `mood: ${state.mood.weather}, ${state.mood.energy}%, ${state.mood.note || "-"}`,
         `eventsDays: ${Object.keys(stripEventsMeta(state.events)).length}`,
         `timeline: ${state.timeline.length}`,
@@ -2073,7 +2371,7 @@ function applyCroppedResult(dataUrl) {
             updatedAt: nowTs(),
             togetherSince: state.settings.togetherSince,
             nextMeetAt: state.settings.nextMeetAt,
-            likes: normalizeLikes(state.settings.likes),
+            herFavoriteDrink: state.settings.herFavoriteDrink,
             avatarBoy: state.settings.avatarBoy || "",
             avatarGirl: state.settings.avatarGirl || "",
             bgTheme: state.settings.bgTheme || "warm",
@@ -2097,7 +2395,7 @@ function applyCroppedResult(dataUrl) {
         updatedAt: nowTs(),
         togetherSince: state.settings.togetherSince,
         nextMeetAt: state.settings.nextMeetAt,
-        likes: normalizeLikes(state.settings.likes),
+        herFavoriteDrink: state.settings.herFavoriteDrink,
         avatarBoy: state.settings.avatarBoy || "",
         avatarGirl: state.settings.avatarGirl || "",
         bgTheme: state.settings.bgTheme || "warm",
@@ -2142,10 +2440,7 @@ function bindEvents() {
 
     dom.chips.addEventListener("click", (e) => {
         const btn = e.target.closest("button[data-text]");
-        if (!btn){
-            console('文本获取失败')
-            return;
-        }
+        if (!btn) return;
         onSend(btn.dataset.text);
     });
 
@@ -2156,6 +2451,86 @@ function bindEvents() {
         bootstrapDefaultMessages();
         renderAllMessages();
     });
+
+    // couple chat (WS)
+    const openCouplePanel = () => {
+        if (!dom.couplePanel || !dom.couplePanelBackdrop) return;
+        dom.couplePanel.classList.add("open");
+        dom.couplePanelBackdrop.classList.add("open");
+        dom.couplePanel.setAttribute("aria-hidden", "false");
+    };
+    const closeCouplePanel = () => {
+        if (!dom.couplePanel || !dom.couplePanelBackdrop) return;
+        dom.couplePanel.classList.remove("open");
+        dom.couplePanelBackdrop.classList.remove("open");
+        dom.couplePanel.setAttribute("aria-hidden", "true");
+    };
+
+    const sendCoupleMessage = () => {
+        if (!dom.coupleInput) return;
+        const text = String(dom.coupleInput.value || "").trim();
+        if (!text) return;
+        if (!USER_TOKEN) {
+            showAuthOverlay(true);
+            return;
+        }
+
+        const clientMsgId = uid("cmsg");
+        const localMsg = {
+            client_msg_id: clientMsgId,
+            content: text,
+            sender_id: getMyUserId(),
+            local_ts: Date.now(),
+            status: "sending"
+        };
+        upsertCoupleMessage(localMsg);
+        renderCoupleMessages();
+        saveCoupleChatState();
+
+        dom.coupleInput.value = "";
+        if (dom.coupleSend) dom.coupleSend.classList.add("hidden");
+
+        const ok = sendCoupleWs({
+            type: "send",
+            client_msg_id: clientMsgId,
+            content: text,
+            device_id: state.coupleChat.deviceId
+        });
+
+        if (!ok) {
+            upsertCoupleMessage({ client_msg_id: clientMsgId, status: "failed" });
+            renderCoupleMessages();
+            saveCoupleChatState();
+            connectCoupleWs();
+        }
+    };
+
+    if (dom.coupleSend) dom.coupleSend.addEventListener("click", sendCoupleMessage);
+    if (dom.coupleInput) {
+        dom.coupleInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") sendCoupleMessage();
+        });
+        dom.coupleInput.addEventListener("input", (e) => {
+            const val = String(e.target.value || "").trim();
+            if (dom.coupleSend) dom.coupleSend.classList.toggle("hidden", val.length === 0);
+        });
+        dom.coupleInput.addEventListener("focus", () => {
+            closeCouplePanel();
+        });
+    }
+    if (dom.couplePlus) {
+        dom.couplePlus.addEventListener("click", () => {
+            if (!dom.couplePanel || !dom.couplePanelBackdrop) return;
+            const isOpen = dom.couplePanel.classList.contains("open");
+            if (isOpen) closeCouplePanel();
+            else openCouplePanel();
+        });
+    }
+    if (dom.couplePanelBackdrop) {
+        dom.couplePanelBackdrop.addEventListener("click", () => {
+            closeCouplePanel();
+        });
+    }
 
     // calendar month nav
     dom.calPrev.addEventListener("click", () => {
@@ -2414,6 +2789,7 @@ function bindAuthEvents() {
                     console.log("🚀 已登录，启动智能同步...");
                     startSmartPolling();
                     startPokePolling();
+                    connectCoupleWs();
                     fireAndForget((async () => {
                         await bootstrapCloudIfEmpty();
                         await syncFromCloudOnce();
@@ -2442,7 +2818,7 @@ function initUiCustomizeSettings() {
                 updatedAt: nowTs(),
                 togetherSince: state.settings.togetherSince,
                 nextMeetAt: state.settings.nextMeetAt,
-                likes: normalizeLikes(state.settings.likes),
+                herFavoriteDrink: state.settings.herFavoriteDrink,
                 avatarBoy: state.settings.avatarBoy || "",
                 avatarGirl: state.settings.avatarGirl || "",
                 bgTheme: state.settings.bgTheme || "warm",
@@ -2475,7 +2851,7 @@ function initUiCustomizeSettings() {
                 updatedAt: nowTs(),
                 togetherSince: state.settings.togetherSince,
                 nextMeetAt: state.settings.nextMeetAt,
-                likes: normalizeLikes(state.settings.likes),
+                herFavoriteDrink: state.settings.herFavoriteDrink,
                 avatarBoy: state.settings.avatarBoy || "",
                 avatarGirl: state.settings.avatarGirl || "",
                 bgTheme: state.settings.bgTheme || "warm",
@@ -2517,7 +2893,7 @@ function initUiCustomizeSettings() {
                 updatedAt: nowTs(),
                 togetherSince: state.settings.togetherSince,
                 nextMeetAt: state.settings.nextMeetAt,
-                likes: normalizeLikes(state.settings.likes),
+                herFavoriteDrink: state.settings.herFavoriteDrink,
                 avatarBoy: state.settings.avatarBoy || "",
                 avatarGirl: state.settings.avatarGirl || "",
                 bgTheme: state.settings.bgTheme || "warm",
@@ -2548,9 +2924,6 @@ function init() {
 
     bootstrapDefaultMessages();
 
-    normalizeSettingsLikes();
-    saveStore(LS.settings, state.settings);
-
     refreshTopUI();
     refreshHomeUI();
     setInterval(refreshTopUI, 60 * 1000);
@@ -2576,196 +2949,14 @@ function init() {
         showAuthOverlay(true);
     } else {
         showAuthOverlay(false);
-        console.log("🚀 启动智能同步...");
+        console.log("66666666666666启动！");
         startSmartPolling();
         startPokePolling();
+        connectCoupleWs();
         fireAndForget((async () => {
             await bootstrapCloudIfEmpty();
             await syncFromCloudOnce();
         })());
-    }
-
-    const setupRopeSheet = () => {
-        console.log("JS运行了");
-        const backdrop = document.querySelector("#backdrop");
-        const sheet = document.querySelector("#sheet");
-        const rope = document.querySelector("#rope");
-        const pageChat = document.querySelector("#page-chat");
-
-        if (!backdrop || !sheet || !rope) {
-            console.warn("[rope] missing elements", {
-                backdrop: !!backdrop,
-                sheet: !!sheet,
-                rope: !!rope
-            });
-            return;
-        }
-
-        const logError = (scope, err) => {
-            console.error(`[rope] ${scope}`, err);
-        };
-        const safe = (scope, fn) => (...args) => {
-            try {
-                return fn(...args);
-            } catch (err) {
-                logError(scope, err);
-            }
-        };
-        const pointEvent = (target, handlers) => {
-            if (!target) return;
-            const opts = { passive: false };
-            if (handlers.down) target.addEventListener("pointerdown", handlers.down, opts);
-            if (handlers.move) target.addEventListener("pointermove", handlers.move, opts);
-            if (handlers.up) target.addEventListener("pointerup", handlers.up, opts);
-            if (handlers.cancel) target.addEventListener("pointercancel", handlers.cancel, opts);
-        };
-
-        const uiState = { isOpen: false, animating: false };
-        const ropeState = { pointerId: null, startY: 0, moved: false, pulled: false, startAt: 0 };
-        const pullConfig = { minPull: 28, maxPull: 90, maxDuration: 1200 };
-
-        const setPageChatVisible = (on) => {
-            if (!pageChat) return;
-            if (on) {
-                if (pageChat.dataset.prevHidden === undefined) {
-                    pageChat.dataset.prevHidden = String(pageChat.classList.contains("hidden"));
-                }
-                pageChat.classList.remove("hidden");
-            } else {
-                const prevHidden = pageChat.dataset.prevHidden === "true";
-                if (prevHidden) pageChat.classList.add("hidden");
-                delete pageChat.dataset.prevHidden;
-            }
-        };
-        const syncAria = () => {
-            rope.setAttribute("aria-expanded", uiState.isOpen ? "true" : "false");
-            sheet.setAttribute("aria-hidden", uiState.isOpen ? "false" : "true");
-            backdrop.setAttribute("aria-hidden", uiState.isOpen ? "false" : "true");
-        };
-        const setAnimating = () => {
-            uiState.animating = true;
-            window.setTimeout(() => {
-                uiState.animating = false;
-            }, 360);
-        };
-
-        function openSheet() {
-            if (uiState.isOpen || uiState.animating) return;
-            uiState.isOpen = true;
-            setAnimating();
-            backdrop.classList.add("open");
-            sheet.classList.add("open");
-            rope.classList.add("open");
-            document.body.classList.add("sheet-open");
-            setPageChatVisible(true);
-            syncAria();
-            if (typeof renderAllMessages === "function") renderAllMessages();
-        }
-        function closeSheet() {
-            if (!uiState.isOpen || uiState.animating) return;
-            uiState.isOpen = false;
-            setAnimating();
-            backdrop.classList.remove("open");
-            sheet.classList.remove("open");
-            rope.classList.remove("open");
-            document.body.classList.remove("sheet-open");
-            setPageChatVisible(false);
-            syncAria();
-        }
-
-        function resetPull() {
-            if (ropeState.pointerId !== null && rope.releasePointerCapture) {
-                try {
-                    rope.releasePointerCapture(ropeState.pointerId);
-                } catch (err) {
-                    logError("releasePointerCapture", err);
-                }
-            }
-            ropeState.pointerId = null;
-            ropeState.moved = false;
-            ropeState.pulled = false;
-            ropeState.startAt = 0;
-            rope.classList.remove("pulling");
-            rope.style.removeProperty("--rope-pull");
-        }
-
-        const onPullSuccess = () => openSheet();
-
-        const onPointerDown = safe("pointerdown", (e) => {
-            if (uiState.isOpen || uiState.animating) return;
-            if (e.button !== undefined && e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            ropeState.pointerId = e.pointerId;
-            ropeState.startY = e.clientY;
-            ropeState.startAt = Date.now();
-            ropeState.moved = false;
-            ropeState.pulled = false;
-            rope.classList.add("pulling");
-            if (rope.setPointerCapture) rope.setPointerCapture(e.pointerId);
-        });
-        const onPointerMove = safe("pointermove", (e) => {
-            if (ropeState.pointerId === null || ropeState.pointerId !== e.pointerId) return;
-            e.preventDefault();
-            const deltaY = Math.max(0, e.clientY - ropeState.startY);
-            if (deltaY > 2) ropeState.moved = true;
-            if (deltaY >= pullConfig.minPull) ropeState.pulled = true;
-            const clamped = Math.min(deltaY, pullConfig.maxPull);
-            rope.style.setProperty("--rope-pull", `${clamped}px`);
-        });
-        const onPointerUp = safe("pointerup", (e) => {
-            if (ropeState.pointerId !== e.pointerId) return;
-            e.preventDefault();
-            e.stopPropagation();
-            const duration = Date.now() - ropeState.startAt;
-            const ok = ropeState.moved && ropeState.pulled && duration <= pullConfig.maxDuration;
-            resetPull();
-            if (!ok) return;
-            onPullSuccess();
-        });
-        const onPointerCancel = safe("pointercancel", () => {
-            resetPull();
-        });
-
-        pointEvent(rope, {
-            down: onPointerDown,
-            move: onPointerMove,
-            up: onPointerUp,
-            cancel: onPointerCancel
-        });
-        rope.addEventListener("click", (e) => e.stopPropagation());
-        rope.addEventListener("keydown", safe("rope.keydown", (e) => {
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault();
-            if (uiState.isOpen || uiState.animating) return;
-            onPullSuccess();
-        }));
-
-        sheet.addEventListener("pointerdown", (e) => e.stopPropagation());
-        sheet.addEventListener("click", (e) => e.stopPropagation());
-
-        pointEvent(backdrop, {
-            down: safe("backdrop.down", (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeSheet();
-            })
-        });
-        backdrop.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeSheet();
-        });
-        document.addEventListener("keydown", safe("sheet.escape", (e) => {
-            if (e.key === "Escape") closeSheet();
-        }));
-
-        syncAria();
-    };
-
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", setupRopeSheet, { once: true });
-    } else {
-        setupRopeSheet();
     }
 }
 

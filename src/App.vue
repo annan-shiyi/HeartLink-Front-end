@@ -36,14 +36,26 @@
         </div>
     </div>
 </div>
-<div id="rope" role="button" tabindex="0" aria-label="拉绳开启聊天">拉绳</div>
-<div id="backdrop" class="backdrop "></div>
-<div id="sheet" class="sheet ">
-    <div id = "aiHeader" class ="sheetHeader" >用户和ai的聊天界面</div>
+<div id="rope" class="rope-trigger" role="button" aria-label="呼叫AI">
+    <div class="rope-line"></div>
+    <div class="rope-handle">
+        <span class="rope-icon">✨</span>
+        <span class="rope-text">AI</span>
+    </div>
+</div>
 
-    <div id = "deepseekGround" class ="sheetBody">
-        <!-- ============ PAGE: CHAT ============ -->
-            <div id="page-chat" class="page hidden">
+<div id="backdrop" class="backdrop"></div>
+
+<div id="sheet" class="sheet">
+    <div class="sheet-handle-bar"></div>
+    
+    <div id="aiHeader" class="sheetHeader">
+        <div class="header-title">DeepSeek AI</div>
+        <button class="close-sheet-btn">✕</button>
+    </div>
+
+    <div id="deepseekGround" class="sheetBody">
+        <div id="page-chat" class="page hidden">
                 <div class="top-section-wrapper">
                     <section class="mood-section">
                         <div class="mood-emoji" id="js-mood-emoji">⛈️</div>
@@ -133,8 +145,8 @@
             <div class="home-grid">
                 <button class="home-action chat" id="home-go-chat" type="button">
                     <div class="left">
-                        <div class="title">恋爱管家</div>
-                        <div class="sub">一句话哄到位</div>
+                        <div class="title">情侣聊天</div>
+                        <div class="sub">你们的日常对话</div>
                     </div>
                     <div class="icon">💬</div>
                 </button>
@@ -280,6 +292,51 @@
         </div>
     </div>
 
+    <!-- ============ PAGE: COUPLE CHAT ============ -->
+    <div id="page-couple-chat" class="page hidden couple-chat-page">
+        
+        <div class="couple-chat-header">
+            <div class="couple-chat-left">
+                <div class="couple-back-btn"></div>
+                <div class="couple-avatar-container">
+                    <div class="couple-avatar">❤️</div>
+                </div>
+            </div>
+            <div class="couple-chat-center">
+                <div class="couple-title">Babe</div>
+                <div class="couple-sub">iMessage</div> 
+            </div>
+            <div class="couple-chat-right"></div>
+        </div>
+
+        <div class="couple-chat-body" id="chat-body">
+            <div class="couple-messages" id="couple-messages">
+                <div class="chat-time-stamp">Today 9:41 AM</div>
+            </div>
+        </div>
+
+        <div class="couple-chat-input">
+            <button id="buttonGame" class="buttonGame" type="button">+</button>
+            <div class="input-wrapper">
+                <input id="couple-input" type="text" placeholder="iMessage" autocomplete="off" />
+                <button id="couple-send" class="couple-send-btn hidden" type="button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                </button>
+            </div>
+        </div>
+        <div id="couple-panel-backdrop" class="couple-panel-backdrop"></div>
+        <div id="couple-panel" class="couple-panel" aria-hidden="true">
+            <button class="panel-item" type="button">相册</button>
+            <button class="panel-item" type="button">拍摄</button>
+            <button class="panel-item" type="button">位置</button>
+            <button class="panel-item" type="button">文件</button>
+            <button class="panel-item" type="button">收藏</button>
+            <button class="panel-item" type="button">红包</button>
+            <button class="panel-item" type="button">转账</button>
+            <button class="panel-item" type="button">名片</button>
+        </div>
+    </div>
+
     <!-- ============ PAGE: SETTINGS ============ -->
     <div id="page-settings" class="page hidden">
         
@@ -349,7 +406,7 @@
             </div>
 
             <div class="spacer"></div>
-            <div class="muted">DeepSeek Key 不在前端存（安全），放在云端环境变量里。</div>
+            <div class="muted">DeepSeek</div>
         </div>
 
         <div class="card">
@@ -429,7 +486,6 @@
 
 <script setup>
 import { onMounted } from 'vue'
-
 const ensureLegacyScript = () => {
   if (document.getElementById('legacy-app-script')) return
   const script = document.createElement('script')

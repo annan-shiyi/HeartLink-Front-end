@@ -15,6 +15,8 @@
             --bg-scrim: rgba(0, 0, 0, 0);
             --shadow-soft: 0 8px 24px rgba(149, 157, 165, 0.1);
             --radius-box: 24px;
+            --tabbar-h: 76px;
+            --couple-input-h: 64px;
         }
         body.bg-dark {
             --text-primary: #F5F7FA;
@@ -48,11 +50,9 @@
 
         body {
             font-family: 'Nunito', 'Microsoft YaHei', sans-serif;
-            background-color: #f0f2f5;
+            background-color: var(--bg-color);
             color: var(--text-primary);
             margin: 0;
-            display: flex;
-            justify-content: center;
             min-height: 100vh;
         }
         body.poke-lock {
@@ -62,10 +62,10 @@
 
         .app-container {
             width: 100%;
-            max-width: 420px;
+            max-width: 100%;
             background-color: var(--bg-color);
             position: relative;
-            box-shadow: 0 0 50px rgba(0,0,0,0.05);
+            box-shadow: none;
             overflow-x: hidden;
             display: flex;
             flex-direction: column;
@@ -246,7 +246,314 @@
         }
 
         /* --- 底部导航 --- */
-        .navbar {
+        :root {
+    --ios-bg: #FFFFFF;
+    --ios-bubble-me: #007AFF; /* 经典的 iMessage 蓝 */
+    --ios-bubble-me-grad: linear-gradient(180deg, #3478F6 0%, #1662EB 100%); /* 微妙的垂直渐变 */
+    --ios-bubble-them: #E9E9EB;
+    --ios-text-primary: #000000;
+    --ios-text-secondary: #8E8E93; /* 苹果灰 */
+}
+
+/* 整体页面 */
+.couple-chat-page {
+    background-color: var(--ios-bg);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    overflow: hidden;
+    position: relative;
+    padding: 0 !important;
+}
+
+/* --- Header --- */
+.couple-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 44px; /* iOS 标准导航栏高度 */
+    padding: 0 8px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid rgba(0,0,0,0.15);
+    z-index: 10;
+}
+
+.couple-chat-left, .couple-chat-right {
+    width: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.couple-avatar {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #FF9A9E, #FECFEF);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.couple-chat-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.couple-title { font-size: 13px; font-weight: 600; color: #000; }
+.couple-sub { font-size: 10px; color: var(--ios-text-secondary); margin-top: 1px; }
+
+/* --- Body --- */
+.couple-chat-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 12px;
+    background: #fff;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(var(--couple-input-h) + var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+}
+
+.couple-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* 默认消息间距很小，产生“连续对话”感 */
+}
+
+/* --- 消息气泡核心样式 --- */
+.couple-msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%;
+    margin-bottom: 6px; /* 每一组消息之间的距离 */
+    position: relative;
+    /* 进场动画 */
+    animation: msgPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes msgPop {
+    from { opacity: 0; transform: translateY(10px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.couple-bubble {
+    padding: 8px 14px;
+    font-size: 16px;
+    line-height: 1.4;
+    position: relative;
+    z-index: 1;
+}
+
+/* 我发的消息 (右侧) */
+.couple-msg.me {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+.couple-msg.me .couple-bubble {
+    background: var(--ios-bubble-me-grad);
+    color: white;
+    border-radius: 18px;
+}
+/* 模拟 iMessage 经典的“尾巴” */
+.couple-msg.me.last-in-group .couple-bubble {
+    border-bottom-right-radius: 4px; 
+}
+.couple-msg.me.last-in-group .couple-bubble::after {
+    /* 这里用 CSS 画尾巴太复杂，简单用圆角模拟更稳妥，或者用 SVG */
+    /* 极致追求可以用 mask-image，这里为了性能用圆角 */
+}
+
+/* 对方发的消息 (左侧) */
+.couple-msg.them {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+.couple-msg.them .couple-bubble {
+    background: var(--ios-bubble-them);
+    color: #000;
+    border-radius: 18px;
+}
+.couple-msg.them.last-in-group .couple-bubble {
+    border-bottom-left-radius: 4px;
+}
+
+/* --- Emoji 特效 --- */
+/* 如果检测到是纯 Emoji，放大且去掉背景 */
+.couple-msg.emoji-only .couple-bubble {
+    background: transparent !important;
+    font-size: 42px;
+    padding: 0;
+    line-height: 1;
+    box-shadow: none;
+}
+
+/* --- 状态文本 (已读/送达) --- */
+.msg-status {
+    font-size: 10px;
+    color: var(--ios-text-secondary);
+    margin-top: 2px;
+    margin-right: 4px;
+    font-weight: 500;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.couple-msg.me:hover .msg-status, 
+.couple-msg.me.last-in-group .msg-status {
+    opacity: 1; /* 只有最新一条或鼠标悬停时显示 */
+}
+
+.chat-time-stamp {
+    text-align: center;
+    color: #8E8E93;
+    font-size: 11px;
+    font-weight: 500;
+    margin: 16px 0;
+}
+
+/* --- Footer Input --- */
+.couple-chat-input {
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(10px);
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+    display: flex;
+    align-items: flex-end; /* 让输入框变高时按钮在底部对齐 */
+    gap: 10px;
+    border-top: 0.5px solid rgba(0,0,0,0.1);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    height: var(--couple-input-h);
+    z-index: 50;
+}
+
+.buttonGame {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid #C6C6C8;
+    background: #fff;
+    color: #6B6B6B;
+    font-size: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.couple-panel-backdrop {
+    position: fixed;
+    inset: 0 0 calc(var(--couple-input-h) + env(safe-area-inset-bottom)) 0;
+    background: rgba(0, 0, 0, 0.25);
+    display: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 30;
+}
+.couple-panel-backdrop.open {
+    display: block;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.couple-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--couple-input-h) + env(safe-area-inset-bottom));
+    background: #F2F2F7;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    padding: 12px 14px 18px;
+    display: none;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    transform: translateY(110%);
+    transition: transform 0.25s ease;
+    z-index: 31;
+}
+.couple-panel.open {
+    display: grid;
+    transform: translateY(0);
+}
+.panel-item {
+    border: none;
+    background: #fff;
+    border-radius: 14px;
+    padding: 12px 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #333;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
+    cursor: pointer;
+}
+
+.kb-open .navbar {
+    transform: translate3d(-50%, calc(100% + 40px + env(safe-area-inset-bottom)), 0);
+    opacity: 0;
+    pointer-events: none;
+}
+.kb-open .couple-chat-input {
+    bottom: env(safe-area-inset-bottom);
+}
+
+.input-wrapper {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    border: 1px solid #C6C6C8;
+    border-radius: 20px;
+    background: #fff;
+    padding: 2px;
+    transition: border-color 0.2s;
+}
+.input-wrapper:focus-within {
+    border-color: #8E8E93;
+}
+
+.couple-chat-input input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 8px 12px;
+    font-size: 16px;
+    outline: none;
+    min-height: 24px;
+}
+
+.couple-upload-btn, .couple-send-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.couple-upload-btn {
+    width: 34px;
+    height: 34px;
+    margin-bottom: 2px;
+}
+.couple-send-btn {
+    width: 28px;
+    height: 28px;
+    background: #007AFF;
+    border-radius: 50%;
+    margin-right: 2px;
+    transition: transform 0.1s;
+}
+.couple-send-btn:active { transform: scale(0.9); }
+.couple-send-btn.hidden { display: none; } /* 输入框为空时隐藏发送按钮 */
+.navbar {
             position: fixed;
             bottom: calc(16px + env(safe-area-inset-bottom)) !important;
             top: auto !important;
@@ -790,66 +1097,153 @@
             gap: 10px;
             margin-top: 12px;
         }
-        /* Rope + DeepSeek Sheet */
-        #rope{
-            position: fixed;
-            right: 16px;
-            bottom: calc(18px + env(safe-area-inset-bottom) + 76px);
-            width: 56px;
-            height: 96px;
-            background: linear-gradient(180deg, #ffffff 0%, #fff3f6 55%, #ffd5e3 100%);
-            border-radius: 999px;
-            box-shadow: 0 16px 34px rgba(255, 107, 107, 0.25), inset 0 0 0 1px rgba(255,255,255,0.78);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: grab;
-            user-select: none;
-            touch-action: none;
-            z-index: 1202;
-            transform: translateY(var(--rope-pull, 0px));
-            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-            color: #ff5c8a;
-            font-weight: 800;
-            letter-spacing: 1px;
-            font-size: 0;
-            backdrop-filter: blur(10px);
+.rope-trigger {
+    position: fixed;
+    top: -10px; /* 稍微藏一点在屏幕外面，制造悬挂感 */
+    right: 24px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: grab;
+    /* 增加一个轻微的风铃晃动动画 */
+    animation: gentleSwing 6s ease-in-out infinite;
+    transform-origin: top center;
+    transition: transform 0.1s linear; /* 交互时的实时跟随 */
+}
+
+/* 绳线：极细的银丝 */
+.rope-line {
+    width: 1px;
+    height: 60px; /* 线的长度 */
+    background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.3));
+}
+
+/* 把手：磨砂水晶质感 */
+.rope-handle {
+    width: 44px;
+    height: 56px;
+    border-radius: 22px;
+    
+    /* 核心：iOS 磨砂玻璃 + 渐变光泽 */
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 
+        0 8px 32px rgba(31, 38, 135, 0.15),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+        
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+        .rope-icon { font-size: 18px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
+        .rope-text { 
+            font-size: 10px; 
+            font-weight: 700; 
+            color: #333; 
+            letter-spacing: 0.5px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
         }
-        #rope::before{
-            content: "";
-            position: absolute;
-            top: -30px;
-            width: 6px;
-            height: 30px;
-            border-radius: 6px;
-            background: linear-gradient(180deg, rgba(214, 168, 139, 0.95), rgba(167, 116, 92, 0.9));
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
-        }
-        #rope::after{
-            content: "AI";
-            font-size: 12px;
-            letter-spacing: 1px;
-        }
-        #rope.pulling{
-            cursor: grabbing;
-            box-shadow: 0 20px 38px rgba(255, 107, 107, 0.32), inset 0 0 0 1px rgba(255,255,255,0.9);
-        }
-        #rope.open{
-            opacity: 0.15;
-            pointer-events: none;
-        }
-        #rope:focus-visible{
-            outline: 3px solid rgba(255, 107, 107, 0.35);
-            outline-offset: 4px;
-        }
-        .backdrop{
+
+/* 交互状态 */
+.rope-trigger:hover .rope-handle {
+    background: rgba(255, 255, 255, 0.85);
+    transform: translateY(2px) scale(1.05);
+    box-shadow: 0 12px 40px rgba(0, 122, 255, 0.25); /* 悬停时发蓝光 */
+}
+
+.rope-trigger:active, .rope-trigger.pulling {
+    cursor: grabbing;
+    animation: none; /* 拉动时停止晃动 */
+}
+
+        /* --- 2. 遮罩层 (Backdrop) --- */
+        .backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(16, 14, 20, 0.25);
+            background: rgba(0, 0, 0, 0.3); /* 稍微深一点，突出前景 */
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.25s ease;
+            transition: opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1);
             z-index: 1200;
+            backdrop-filter: blur(4px); /* 背景也模糊一下 */
+        }
+        .backdrop.open { opacity: 1; pointer-events: auto; }
+
+        /* --- 3. 聊天面板 (The iOS Sheet) --- */
+        .sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 85vh; /* 稍微高一点 */
+            background: #fff;
+            
+            /* 只有上面两个角是圆的 */
+            border-top-left-radius: 24px;
+            border-top-right-radius: 24px;
+            
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.1);
+            transform: translateY(100%);
+            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1); /* iOS 风格的弹簧曲线 */
+            z-index: 1201;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sheet.open {
+            transform: translateY(0);
+        }
+
+        /* 面板顶部的小抓手 */
+        .sheet-handle-bar {
+            width: 36px;
+            height: 5px;
+            background: #E5E5EA;
+            border-radius: 10px;
+            margin: 12px auto 4px; /* 居中 */
+            flex-shrink: 0;
+        }
+
+        .sheetHeader {
+            padding: 10px 20px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 0.5px solid rgba(0,0,0,0.05);
+        }
+
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1c1c1e;
+        }
+
+        .close-sheet-btn {
+            background: #F2F2F7;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            color: #8E8E93;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .sheetBody {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            background: #fff; /* 确保背景纯白 */
         }
         .backdrop.open{
             opacity: 1;
@@ -924,4 +1318,5 @@
     .home-quick-actions{ grid-template-columns: 1fr; }
     .card{ padding: 14px; }
 }
+
 
