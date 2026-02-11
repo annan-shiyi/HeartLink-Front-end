@@ -17,6 +17,11 @@
             --radius-box: 24px;
             --tabbar-h: 76px;
             --couple-input-h: 64px;
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --sheet-shadow: 0 -10px 60px rgba(0, 0, 0, 0.12), 0 -1px 0 rgba(255,255,255,0.3) inset;
+            --text-main: #1f2937;
         }
         body.bg-dark {
             --text-primary: #F5F7FA;
@@ -320,6 +325,9 @@
     padding-bottom: calc(var(--couple-input-h) + var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
 }
 
+body.couple-chat-active .header { display: none; }
+body.couple-chat-active .couple-chat-body { padding-top: 32px; }
+
 .couple-messages {
     display: flex;
     flex-direction: column;
@@ -580,7 +588,7 @@
         }
         .nav-item { font-size: 20px; opacity: 0.4; background: none; border: none; cursor: pointer; transition: all 0.2s ease; }
         .nav-item.active { opacity: 1; transform: translateY(-2px) scale(1.1); }
-        #page-home, #page-calendar, #page-diary, #page-settings { padding-bottom: 110px; }
+        #page-home, #page-calendar, #page-monster, #page-settings { padding-bottom: 110px; }
         /* =========================
            新增：通用卡片/表单样式
            ========================= */
@@ -732,35 +740,6 @@
         .event-meta { font-size: 12px; color: var(--text-light); margin-top: 2px; }
         .event-actions { display:flex; gap: 8px; }
 
-        /* =========================
-           新增：时光轴
-           ========================= */
-        .timeline-item {
-            padding: 12px 0;
-            border-bottom: 1px solid #f3f3f3;
-            display:flex;
-            gap: 10px;
-            align-items:flex-start;
-        }
-        .timeline-item:last-child { border-bottom: none; }
-        .timeline-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--primary-pink);
-            margin-top: 6px;
-            flex-shrink: 0;
-        }
-        .timeline-content { flex: 1; }
-        .timeline-time { font-size: 12px; color: var(--text-light); margin-top: 6px; display:flex; gap: 10px; align-items:center; }
-        .tag {
-            font-size: 12px;
-            padding: 4px 8px;
-            background: #F8F9FA;
-            border-radius: 999px;
-            color: var(--text-dark);
-        }
-
     
         /* =========================
            新增：HOME 首页（温馨仪表盘）
@@ -874,8 +853,8 @@
         }
         .home-action.chat .icon{ background: #FFF0F0; color: #FF6B6B; }
         .home-action.calendar .icon{ background: #EDF6FF; color: #3B82F6; }
-        .home-action.diary .icon{ background: #FFF9DB; color: #F59F00; }
         .home-action.settings .icon{ background: #F3F0FF; color: #7950F2; }
+        .home-action.monster .icon{ background: #F3F0FF; color: #6D28D9; }
 
         .home-mini{
             display:flex;
@@ -1097,212 +1076,321 @@
             gap: 10px;
             margin-top: 12px;
         }
+/* =========================================
+   1. 拉绳挂件 (The Magic Pendant)
+   ========================================= */
 .rope-trigger {
     position: fixed;
-    top: -10px; /* 稍微藏一点在屏幕外面，制造悬挂感 */
-    right: 24px;
+    top: -15px;
+    right: 32px;
     z-index: 2000;
     display: flex;
     flex-direction: column;
     align-items: center;
     cursor: grab;
-    /* 增加一个轻微的风铃晃动动画 */
-    animation: gentleSwing 6s ease-in-out infinite;
+    animation: floatingSwing 5s ease-in-out infinite;
     transform-origin: top center;
-    transition: transform 0.1s linear; /* 交互时的实时跟随 */
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    --rope-pull: 0px;
 }
 
-/* 绳线：极细的银丝 */
-.rope-line {
-    width: 1px;
-    height: 60px; /* 线的长度 */
-    background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.3));
+/* 小爪子：像抓在屏幕边缘 */
+.rope-trigger::before {
+    content: "";
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    width: 34px;
+    height: 16px;
+    transform: translateX(-50%);
+    background:
+        radial-gradient(circle at 18% 65%, #f7f4f2 6px, transparent 7px),
+        radial-gradient(circle at 38% 55%, #f7f4f2 5px, transparent 6px),
+        radial-gradient(circle at 62% 55%, #f7f4f2 5px, transparent 6px),
+        radial-gradient(circle at 82% 65%, #f7f4f2 6px, transparent 7px),
+        radial-gradient(ellipse at 50% 100%, #f7f4f2 12px 8px, transparent 13px);
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.18));
+    z-index: 3;
+    pointer-events: none;
 }
 
-/* 把手：磨砂水晶质感 */
-.rope-handle {
-    width: 44px;
-    height: 56px;
-    border-radius: 22px;
-    
-    /* 核心：iOS 磨砂玻璃 + 渐变光泽 */
-    background: rgba(255, 255, 255, 0.65);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 
-        0 8px 32px rgba(31, 38, 135, 0.15),
-        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-        
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+/* 猫头挂件 */
+.rope-head {
+    width: 48px;
+    height: 48px;
+    margin-top: 2px;
+    display: grid;
+    place-items: center;
+    color: #1f1b1a;
+    filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.18));
+    transition: transform 0.2s ease;
+    z-index: 2;
 }
 
-        .rope-icon { font-size: 18px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
-        .rope-text { 
-            font-size: 10px; 
-            font-weight: 700; 
-            color: #333; 
-            letter-spacing: 0.5px;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-
-/* 交互状态 */
-.rope-trigger:hover .rope-handle {
-    background: rgba(255, 255, 255, 0.85);
-    transform: translateY(2px) scale(1.05);
-    box-shadow: 0 12px 40px rgba(0, 122, 255, 0.25); /* 悬停时发蓝光 */
+.rope-head-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    transform: rotate(180deg);
 }
+
+/* 猫尾巴当作绳子 */
+
+/* --- 交互状态 --- */
+.rope-trigger:hover .rope-head {
+    transform: translateY(2px) scale(1.04);
+}
+
 
 .rope-trigger:active, .rope-trigger.pulling {
     cursor: grabbing;
-    animation: none; /* 拉动时停止晃动 */
+    animation: none;
 }
 
-        /* --- 2. 遮罩层 (Backdrop) --- */
-        .backdrop {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.3); /* 稍微深一点，突出前景 */
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1);
-            z-index: 1200;
-            backdrop-filter: blur(4px); /* 背景也模糊一下 */
-        }
-        .backdrop.open { opacity: 1; pointer-events: auto; }
+.rope-trigger.pulling {
+    transform: translateY(var(--rope-pull, 0px));
+}
 
-        /* --- 3. 聊天面板 (The iOS Sheet) --- */
-        .sheet {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 85vh; /* 稍微高一点 */
-            background: #fff;
-            
-            /* 只有上面两个角是圆的 */
-            border-top-left-radius: 24px;
-            border-top-right-radius: 24px;
-            
-            box-shadow: 0 -10px 40px rgba(0,0,0,0.1);
-            transform: translateY(100%);
-            transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1); /* iOS 风格的弹簧曲线 */
-            z-index: 1201;
-            display: flex;
-            flex-direction: column;
-        }
+.rope-trigger:active .rope-head {
+    transform: translateY(6px) scale(0.98);
+    transition: transform 0.1s;
+}
 
-        .sheet.open {
-            transform: translateY(0);
-        }
+.rope-trigger.pulling .rope-head {
+    animation: catNod 0.6s ease-in-out infinite;
+}
 
-        /* 面板顶部的小抓手 */
-        .sheet-handle-bar {
-            width: 36px;
-            height: 5px;
-            background: #E5E5EA;
-            border-radius: 10px;
-            margin: 12px auto 4px; /* 居中 */
-            flex-shrink: 0;
-        }
+@keyframes catNod {
+    0% { transform: translateY(4px) rotate(0deg); }
+    30% { transform: translateY(8px) rotate(2deg); }
+    60% { transform: translateY(6px) rotate(-2deg); }
+    100% { transform: translateY(4px) rotate(0deg); }
+}
 
-        .sheetHeader {
-            padding: 10px 20px 16px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 0.5px solid rgba(0,0,0,0.05);
-        }
 
-        .header-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1c1c1e;
-        }
+/* =========================================
+   2. 遮罩 (Backdrop)
+   ========================================= */
+.backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(28, 28, 30, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+    z-index: 1200;
+    backdrop-filter: blur(8px);
+}
+.backdrop.open { opacity: 1; pointer-events: auto; }
 
-        .close-sheet-btn {
-            background: #F2F2F7;
-            border: none;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            color: #8E8E93;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
+/* =========================================
+   3. 面板 (Premium Sheet)
+   ========================================= */
+.sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 85vh;
+    background: rgba(255, 255, 255, 0.96);
+    border-top-left-radius: 32px;
+    border-top-right-radius: 32px;
+    box-shadow: var(--sheet-shadow);
+    transform: translateY(110%);
+    transition: transform 0.6s cubic-bezier(0.19, 1, 0.22, 1);
+    z-index: 1201;
+    display: flex;
+    flex-direction: column;
+}
 
-        .sheetBody {
-            flex: 1;
-            overflow: hidden;
-            position: relative;
-            background: #fff; /* 确保背景纯白 */
-        }
-        .backdrop.open{
-            opacity: 1;
-            pointer-events: auto;
-            backdrop-filter: blur(2px);
-        }
-        .sheet{
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 80vh;
-            transform: translateY(100%);
-            transition: transform 0.3s ease;
-            z-index: 1201;
-            display: flex;
-            flex-direction: column;
-            background: transparent;
-            opacity: 0;
-            pointer-events: none;
-        }
-        .sheet.open{
-            transform: translateY(0);
-            pointer-events: auto;
-            opacity: 1;
-        }
-        .sheetHeader{
-            padding: 16px 20px;
-            font-weight: 800;
-            background: #ffffff;
-            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            z-index: 3;
-        }
-        .sheetBody{
-            background: #ffffff;
-            height: 100%;
-            width: 100%;
-            position: relative;
-            z-index: 2;
-            display: flex;
-            overflow: hidden;
-        }
-        #deepseekGround .page{
-            flex: 1;
-            overflow: hidden;
-        }
-        #deepseekGround .top-section-wrapper{
-            padding: 0 16px;
-        }
-        #deepseekGround .chat-messages{
-            padding: 10px 16px calc(98px + env(safe-area-inset-bottom));
-        }
-        body.sheet-open{
-            overflow: hidden;
-            touch-action: none;
-        }
+.sheet.open { transform: translateY(0); }
+
+/* 把手区域 */
+.sheet-handle-wrapper {
+    width: 100%;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: grab;
+}
+
+.sheet-handle-bar {
+    width: 48px;
+    height: 5px;
+    background: #E0E0E0;
+    border-radius: 10px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+/* 鼠标悬停把手时的微交互 */
+.sheet-handle-wrapper:hover .sheet-handle-bar {
+    width: 60px;
+    background: #C0C0C0;
+}
+
+/* 头部设计 */
+.sheetHeader {
+    padding: 8px 32px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+}
+
+.sheetHeader::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 32px;
+    right: 32px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,0,0,0.06), transparent);
+}
+
+.header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-icon {
+    font-size: 24px;
+    background: #F2F4F7;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+}
+
+.header-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+}
+
+/* 关闭按钮升级 */
+.close-sheet-btn {
+    background: transparent;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: #9CA3AF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.close-sheet-btn:hover {
+    background: #F3F4F6;
+    color: #111827;
+    transform: rotate(90deg);
+}
+
+.sheetBody {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    padding: 0 32px;
+    scrollbar-width: thin;
+    scrollbar-color: #E5E7EB transparent;
+}
+
+.skill-list {
+    display: grid;
+    gap: 16px;
+    padding-top: 8px;
+}
+
+.skill-card {
+    background: #ffffff;
+    border-radius: 22px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.skill-card[type="button"] {
+    text-align: left;
+    cursor: pointer;
+    padding: 0;
+}
+
+.skill-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    background: #ffffff;
+}
+
+.skill-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.skill-title {
+    font-weight: 800;
+    font-size: 16px;
+    color: #2b2b2b;
+}
+
+.skill-subtitle {
+    font-size: 13px;
+    color: #9aa0a6;
+}
+
+.skill-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #f2f4f8;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+    color: #6b7280;
+}
+
+.skill-card-body {
+    padding: 12px 12px 16px;
+}
+
+/* 确保聊天页在卡片内正常显示 */
+.skill-card .page {
+    padding: 0;
+}
+
+.skill-detail {
+    margin-top: 10px;
+}
+
+.skill-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 0 10px;
+}
+
+.skill-detail-title {
+    font-weight: 800;
+    font-size: 15px;
+    color: #2b2b2b;
+}
+
+/* 定义摆动动画 */
+@keyframes floatingSwing {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    25% { transform: rotate(1.5deg) translateY(1px); }
+    75% { transform: rotate(-1.5deg) translateY(-0.5px); }
+}
 /* 响应式：小屏更舒服 */
 @media (max-width: 420px){
     .header { padding: 14px 14px 0 14px; gap: 10px; }

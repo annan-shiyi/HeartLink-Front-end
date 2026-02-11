@@ -7,7 +7,6 @@ const LS = {
     settings: "heartlink_settings_v1",
     mood: "heartlink_mood_v1",
     events: "heartlink_events_v1",
-    timeline: "heartlink_timeline_v1",
     messages: "heartlink_messages_v1",
     pokeSince: "heartlink_poke_since_v1",
     coupleChat: "heartlink_couple_chat_v1",
@@ -52,9 +51,6 @@ const DEFAULTS = {
     events: {
         // "YYYY-MM-DD": [{ id, time, title, isReunion }]
     },
-    timeline: [
-        // { id, text, ts, tag }
-    ],
 };
 
 /* =========================
@@ -313,7 +309,6 @@ const state = {
     settings: loadStore(LS.settings, DEFAULTS.settings),
     mood: loadStore(LS.mood, DEFAULTS.mood),
     events: loadStore(LS.events, DEFAULTS.events),
-    timeline: loadStore(LS.timeline, DEFAULTS.timeline),
     messages: loadStore(LS.messages, []),
     coupleChat: loadCoupleChatState(),
 
@@ -335,7 +330,6 @@ function persistAll() {
     saveStore(LS.settings, state.settings);
     saveStore(LS.mood, state.mood);
     saveStore(LS.events, state.events);
-    saveStore(LS.timeline, state.timeline);
     saveStore(LS.messages, state.messages);
 }
 
@@ -356,11 +350,10 @@ const dom = {
     homeMoodTitle: el("home-mood-title"),
     homeMoodNote: el("home-mood-note"),
     homeEventsPreview: el("home-events-preview"),
-    homeTimelinePreview: el("home-timeline-preview"),
     homeGoChat: el("home-go-chat"),
     homeGoCalendar: el("home-go-calendar"),
-    homeGoDiary: el("home-go-diary"),
     homeGoSettings: el("home-go-settings"),
+    homeGoMonster: el("home-go-monster"),
 
     // top mood+countdown (chat page)
     moodEmoji: el("js-mood-emoji"),
@@ -383,14 +376,14 @@ const dom = {
 
     // tabs
     tabCalendar: el("tab-calendar"),
-    tabDiary: el("tab-diary"),
+    tabMonster: el("tab-monster"),
     tabChat: el("tab-chat"),
     tabSettings: el("tab-settings"),
     navbar: document.querySelector(".navbar"),
 
     // pages
     pageCalendar: el("page-calendar"),
-    pageDiary: el("page-diary"),
+    pageMonster: el("page-monster"),
     pageChat: el("page-chat"),
     pageCoupleChat: el("page-couple-chat"),
     pageSettings: el("page-settings"),
@@ -414,13 +407,6 @@ const dom = {
     moodNote: el("mood-note"),
     moodSave: el("mood-save"),
     moodReset: el("mood-reset"),
-
-    // timeline
-    tlText: el("tl-text"),
-    tlAdd: el("tl-add"),
-    tlAddFromMood: el("tl-add-from-mood"),
-    tlClear: el("tl-clear"),
-    tlList: el("tl-list"),
 
     // settings
     stTogether: el("st-together"),
@@ -548,28 +534,6 @@ function renderHomeEventsPreview(){
         `;
     }).join("") + (sorted.length>3 ? `<div class="muted">还有 ${sorted.length-3} 个…</div>` : "");
 }
-function renderHomeTimelinePreview(){
-    if (!dom.homeTimelinePreview) return;
-    const list = Array.isArray(state.timeline) ? state.timeline : [];
-    if (list.length === 0){
-        dom.homeTimelinePreview.innerHTML = `<div class="muted">还没有记录，去时光轴写下第一个闪光瞬间吧～</div>`;
-        return;
-    }
-    const sorted = [...list].sort((a,b)=> Number(b.ts||0)-Number(a.ts||0));
-    const show = sorted.slice(0, 2);
-    dom.homeTimelinePreview.innerHTML = show.map(it => {
-        const tag = it.tag ? `<span class="tag">${escapeHTML(it.tag)}</span>` : "";
-        return `
-            <div class="home-preview-item">
-                <div>
-                    <div class="t">${escapeHTML((it.text||"").slice(0, 60) || "（空）")}</div>
-                    <div class="m">${fmtShortTime(it.ts)} ${tag}</div>
-                </div>
-                <div class="badge">✨</div>
-            </div>
-        `;
-    }).join("") + (sorted.length>2 ? `<div class="muted">还有更多瞬间在时光轴里～</div>` : "");
-}
 function refreshHomeUI(){
     if (!dom.homeGreeting) return; // 未启用首页
     const now = new Date();
@@ -586,7 +550,6 @@ function refreshHomeUI(){
     if (dom.homeMoodNote) dom.homeMoodNote.textContent = `能量 ${state.mood.energy}% · ${state.mood.note || "我在这里"}`;
 
     renderHomeEventsPreview();
-    renderHomeTimelinePreview();
 }
 
 let homeTipTimer = null;
@@ -720,11 +683,6 @@ async function cloudSet(kind, data) {
     }
 }
 
-async function cloudPushTimeline(item) {
-    // V4：统一走 /api/sync，timeline 采用整份 upsert
-    return cloudSet("timeline", state.timeline);
-}
-
 function fireAndForget(p) {
     Promise.resolve(p).catch(() => {});
 }
@@ -744,26 +702,6 @@ function applyCloudMood(remote) {
         refreshTopUI();
         syncMoodEditorUI();
     }
-}
-
-function applyCloudTimeline(remote) {
-    if (!remote) return;
-
-    const r = normalizeCloudEnvelope(remote);
-    const arr = Array.isArray(r.data) ? r.data : (Array.isArray(remote) ? remote : []);
-    if (!Array.isArray(arr)) return;
-
-    // 合并去重：按 id
-    const map = new Map();
-    for (const it of state.timeline || []) {
-        if (it && it.id) map.set(it.id, it);
-    }
-    for (const it of arr) {
-        if (it && it.id) map.set(it.id, it);
-    }
-    state.timeline = Array.from(map.values());
-    saveStore(LS.timeline, state.timeline);
-    renderTimeline();
 }
 
 function applyCloudEvents(remote) {
@@ -833,15 +771,13 @@ async function syncFromCloudOnce() {
     state.cloud.busy = true;
 
     try {
-        const [mood, timeline, events, settings] = await Promise.allSettled([
+        const [mood, events, settings] = await Promise.allSettled([
             cloudGet("mood"),
-            cloudGet("timeline"),
             cloudGet("events"),
             cloudGet("settings"),
         ]);
 
         if (mood.status === "fulfilled") applyCloudMood(mood.value);
-        if (timeline.status === "fulfilled") applyCloudTimeline(timeline.value);
         if (events.status === "fulfilled") applyCloudEvents(events.value);
         if (settings.status === "fulfilled") applyCloudSettings(settings.value);
 
@@ -866,11 +802,6 @@ async function bootstrapCloudIfEmpty() {
         if (!mood) {
             if (!state.mood.updatedAt) state.mood.updatedAt = nowTs();
             await cloudSet("mood", state.mood);
-        }
-
-        const tl = await cloudGet("timeline");
-        if (!tl || (Array.isArray(tl) && tl.length === 0)) {
-            await cloudSet("timeline", state.timeline);
         }
 
         const ev = await cloudGet("events");
@@ -1613,7 +1544,7 @@ function initTabs() {
     const tabs = [
         { tabId: "tab-home", pageId: "page-home" },
         { tabId: "tab-calendar", pageId: "page-calendar" },
-        { tabId: "tab-diary", pageId: "page-diary" },
+        { tabId: "tab-monster", pageId: "page-monster" },
         { tabId: "tab-chat", pageId: "page-couple-chat" },
         { tabId: "tab-settings", pageId: "page-settings" }
     ];
@@ -1627,6 +1558,7 @@ function initTabs() {
             tabEl.classList.toggle("active", isActive);
             pageEl.classList.toggle("hidden", !isActive);
         }
+        document.body.classList.toggle("couple-chat-active", tabId === "tab-chat");
 
         if (tabId === "tab-home") {
             refreshHomeUI();
@@ -1639,9 +1571,6 @@ function initTabs() {
             renderCalendar();
             renderEventsForSelectedDate();
             syncMoodEditorUI();
-        }
-        if (tabId === "tab-diary") {
-            renderTimeline();
         }
         if (tabId === "tab-settings") {
             syncSettingsUI();
@@ -1899,79 +1828,6 @@ function resetMood() {
 }
 
 /* =========================
-   10) Timeline（共享时光轴 + 云同步）
-   ========================= */
-function renderTimeline() {
-    const list = (state.timeline || []).slice().sort((a, b) => b.ts - a.ts);
-    dom.tlList.innerHTML = "";
-
-    if (list.length === 0) {
-        dom.tlList.innerHTML = `<div class="muted">还没有瞬间～写一条吧 ✨</div>`;
-        return;
-    }
-
-    list.forEach(item => {
-        const wrap = document.createElement("div");
-        wrap.className = "timeline-item";
-
-        const dot = document.createElement("div");
-        dot.className = "timeline-dot";
-
-        const content = document.createElement("div");
-        content.className = "timeline-content";
-
-        const text = document.createElement("div");
-        text.innerHTML = escapeHTML(item.text).replaceAll("\n", "<br>");
-
-        const time = document.createElement("div");
-        time.className = "timeline-time";
-        const d = new Date(item.ts);
-        const ts = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-        time.innerHTML = `<span>${ts}</span>${item.tag ? `<span class="tag">${escapeHTML(item.tag)}</span>` : ""}`;
-
-        const actions = document.createElement("div");
-        actions.style.marginTop = "8px";
-        const del = document.createElement("button");
-        del.className = "btn btn-danger btn-small";
-        del.textContent = "删除";
-        del.addEventListener("click", () => {
-            state.timeline = (state.timeline || []).filter(x => x.id !== item.id);
-            saveStore(LS.timeline, state.timeline);
-            renderTimeline();
-
-            // 简化：删除暂不回写云端（避免误删对方的记录）
-            // 真要做：云端需要带 ownerId 或 tombstone 机制
-        });
-        actions.appendChild(del);
-
-        content.appendChild(text);
-        content.appendChild(time);
-        content.appendChild(actions);
-
-        wrap.appendChild(dot);
-        wrap.appendChild(content);
-        dom.tlList.appendChild(wrap);
-    });
-
-    refreshHomeUI();
-}
-
-function addTimeline(text, tag = null) {
-    const t = (text || "").trim();
-    if (!t) return;
-
-    const item = { id: uid("tl"), text: t, ts: nowTs(), tag: tag || "" };
-
-    state.timeline.push(item);
-    saveStore(LS.timeline, state.timeline);
-    dom.tlText.value = "";
-    renderTimeline();
-
-    // 云同步：timeline（整份 upsert）
-    if (USER_TOKEN) fireAndForget(cloudSet("timeline", state.timeline));
-}
-
-/* =========================
    11) Settings（保存/重置/导入导出/清空）+ 绑定云同步
    ========================= */
 function syncSettingsUI() {
@@ -2075,7 +1931,6 @@ function exportJSON() {
         settings: state.settings,
         mood: state.mood,
         events: stripEventsMeta(state.events),
-        timeline: state.timeline,
         messages: state.messages
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -2095,7 +1950,6 @@ function importJSON(file) {
             if (data.settings) state.settings = { ...DEFAULTS.settings, ...data.settings };
             if (data.mood) state.mood = { ...DEFAULTS.mood, ...data.mood };
             if (data.events) state.events = data.events;
-            if (data.timeline) state.timeline = data.timeline;
             if (data.messages) state.messages = data.messages;
 
             persistAll();
@@ -2103,7 +1957,6 @@ function importJSON(file) {
             renderAllMessages();
             renderCalendar();
             renderEventsForSelectedDate();
-            renderTimeline();
             syncSettingsUI();
             syncMoodEditorUI();
             renderSettingsDebug();
@@ -2134,7 +1987,6 @@ function wipeAll() {
     state.settings = { ...DEFAULTS.settings };
     state.mood = { ...DEFAULTS.mood };
     state.events = { ...DEFAULTS.events };
-    state.timeline = [...DEFAULTS.timeline];
     state.messages = [];
 
     persistAll();
@@ -2143,7 +1995,6 @@ function wipeAll() {
     renderAllMessages();
     renderCalendar();
     renderEventsForSelectedDate();
-    renderTimeline();
     renderCoupleMessages();
     syncSettingsUI();
     syncMoodEditorUI();
@@ -2158,7 +2009,6 @@ function renderSettingsDebug() {
         `drink: ${state.settings.herFavoriteDrink || "-"}`,
         `mood: ${state.mood.weather}, ${state.mood.energy}%, ${state.mood.note || "-"}`,
         `eventsDays: ${Object.keys(stripEventsMeta(state.events)).length}`,
-        `timeline: ${state.timeline.length}`,
         `messages: ${state.messages.length}`,
         `cloudPolling: ${state.cloud.pollingTimer ? "ON" : "OFF"}`,
         `lastPullAt: ${state.cloud.lastPullAt ? new Date(state.cloud.lastPullAt).toLocaleString() : "-"}`,
@@ -2434,6 +2284,90 @@ function bindEvents() {
     window.addEventListener("pointermove", (e) => onNavWake(e.clientY), { passive: true });
     window.addEventListener("touchmove", (e) => onNavWake(e.touches && e.touches[0] ? e.touches[0].clientY : undefined), { passive: true });
 
+    // rope -> open AI sheet (drag to trigger)
+    const rope = el("rope");
+    const sheet = el("sheet");
+    const backdrop = el("backdrop");
+    const closeSheetBtn = document.querySelector(".close-sheet-btn");
+
+    const openAiSheet = () => {
+        if (!sheet || !backdrop) return;
+        sheet.classList.add("open");
+        backdrop.classList.add("open");
+    };
+    const closeAiSheet = () => {
+        if (!sheet || !backdrop) return;
+        sheet.classList.remove("open");
+        backdrop.classList.remove("open");
+    };
+
+    if (rope && sheet && backdrop) {
+        let pulling = false;
+        let startY = 0;
+        let activeId = null;
+        const pullThreshold = 36;
+        const maxPull = 28;
+
+        const resetPull = () => {
+            pulling = false;
+            activeId = null;
+            rope.classList.remove("pulling");
+            rope.style.removeProperty("--rope-pull");
+        };
+
+        rope.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0) return;
+            pulling = true;
+            activeId = e.pointerId;
+            startY = e.clientY;
+            rope.classList.add("pulling");
+            rope.setPointerCapture?.(e.pointerId);
+        });
+
+        rope.addEventListener("pointermove", (e) => {
+            if (!pulling || e.pointerId !== activeId) return;
+            const dy = Math.max(0, e.clientY - startY);
+            const clamped = Math.min(maxPull, dy);
+            rope.style.setProperty("--rope-pull", `${clamped}px`);
+            if (dy > pullThreshold) openAiSheet();
+        });
+
+        rope.addEventListener("pointerup", resetPull);
+        rope.addEventListener("pointercancel", resetPull);
+        rope.addEventListener("pointerleave", (e) => {
+            if (pulling && e.buttons === 0) resetPull();
+        });
+
+        // click also opens
+        rope.addEventListener("click", () => openAiSheet());
+    }
+
+    const aiCard = el("open-ai-chat");
+    const aiDetail = el("ai-chat-detail");
+    const aiBack = el("ai-chat-back");
+    const showAiDetail = () => {
+        if (aiDetail) aiDetail.classList.remove("hidden");
+        if (dom.pageChat) dom.pageChat.classList.remove("hidden");
+        if (aiCard) aiCard.classList.add("hidden");
+    };
+    const hideAiDetail = () => {
+        if (aiDetail) aiDetail.classList.add("hidden");
+        if (dom.pageChat) dom.pageChat.classList.add("hidden");
+        if (aiCard) aiCard.classList.remove("hidden");
+    };
+
+    if (aiCard) aiCard.addEventListener("click", showAiDetail);
+    if (aiBack) aiBack.addEventListener("click", hideAiDetail);
+
+    if (backdrop) backdrop.addEventListener("click", () => {
+        closeAiSheet();
+        hideAiDetail();
+    });
+    if (closeSheetBtn) closeSheetBtn.addEventListener("click", () => {
+        closeAiSheet();
+        hideAiDetail();
+    });
+
     // chat
     dom.send.addEventListener("click", () => onSend());
     dom.input.addEventListener("keydown", (e) => { if (e.key === "Enter") onSend(); });
@@ -2584,24 +2518,6 @@ function bindEvents() {
         alert("已恢复默认 ✅");
     });
 
-    // timeline
-    dom.tlAdd.addEventListener("click", () => addTimeline(dom.tlText.value, "瞬间"));
-    dom.tlAddFromMood.addEventListener("click", () => {
-        const t = `今天的状态：${weatherToEmoji(state.mood.weather)} ${weatherToTitle(state.mood.weather)}，能量 ${state.mood.energy}%。\n${state.mood.note || ""}`.trim();
-        addTimeline(t, "状态");
-    });
-    dom.tlClear.addEventListener("click", () => {
-        if (!confirm("清空时光轴？")) return;
-        state.timeline = [];
-        saveStore(LS.timeline, state.timeline);
-        renderTimeline();
-
-        // 清空也同步云端（谨慎：会清空双方的 timeline）
-        if (USER_TOKEN) {
-            fireAndForget(cloudSet("timeline", state.timeline));
-        }
-    });
-
     // settings
     dom.stSave.addEventListener("click", () => {
         saveSettingsFromUI();
@@ -2699,8 +2615,8 @@ function bindEvents() {
     });
     // home quick actions
     if (dom.homeGoChat) dom.homeGoChat.addEventListener("click", () => el("tab-chat")?.click());
+    if (dom.homeGoMonster) dom.homeGoMonster.addEventListener("click", () => el("tab-monster")?.click());
     if (dom.homeGoCalendar) dom.homeGoCalendar.addEventListener("click", () => el("tab-calendar")?.click());
-    if (dom.homeGoDiary) dom.homeGoDiary.addEventListener("click", () => el("tab-diary")?.click());
     if (dom.homeGoSettings) dom.homeGoSettings.addEventListener("click", () => el("tab-settings")?.click());
 
     dom.stWipe.addEventListener("click", wipeAll);
@@ -2919,7 +2835,6 @@ function init() {
     if (!localStorage.getItem(LS.settings)) saveStore(LS.settings, state.settings);
     if (!localStorage.getItem(LS.mood)) saveStore(LS.mood, state.mood);
     if (!localStorage.getItem(LS.events)) saveStore(LS.events, state.events);
-    if (!localStorage.getItem(LS.timeline)) saveStore(LS.timeline, state.timeline);
     if (!localStorage.getItem(LS.messages)) saveStore(LS.messages, state.messages);
 
     bootstrapDefaultMessages();
@@ -2937,7 +2852,6 @@ function init() {
     renderAllMessages();
     renderCalendar();
     renderEventsForSelectedDate();
-    renderTimeline();
 
     bindEvents();
     initTabs();

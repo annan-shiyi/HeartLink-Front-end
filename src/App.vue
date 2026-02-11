@@ -37,72 +37,99 @@
     </div>
 </div>
 <div id="rope" class="rope-trigger" role="button" aria-label="呼叫AI">
-    <div class="rope-line"></div>
-    <div class="rope-handle">
-        <span class="rope-icon">✨</span>
-        <span class="rope-text">AI</span>
+    <div class="rope-head">
+        <img class="rope-head-img" src="/images/catHead.svg" alt="猫头" />
     </div>
 </div>
 
 <div id="backdrop" class="backdrop"></div>
 
 <div id="sheet" class="sheet">
-    <div class="sheet-handle-bar"></div>
-    
-    <div id="aiHeader" class="sheetHeader">
-        <div class="header-title">DeepSeek AI</div>
-        <button class="close-sheet-btn">✕</button>
+    <div class="sheet-handle-wrapper">
+        <div class="sheet-handle-bar"></div>
     </div>
 
-    <div id="deepseekGround" class="sheetBody">
-        <div id="page-chat" class="page hidden">
-                <div class="top-section-wrapper">
-                    <section class="mood-section">
-                        <div class="mood-emoji" id="js-mood-emoji">⛈️</div>
-                        <div class="mood-text">
-                            <h3 id="js-mood-title">有点小雷暴</h3>
-                            <p id="js-mood-subtitle">能量值 15% · 建议给她点个热奶茶</p>
-                        </div>
-                    </section>
+    <div class="sheetHeader">
+        <div class="header-info">
+            <span class="header-icon"></span>
+            <div class="header-title">大招面板</div>
+        </div>
+        <button class="close-sheet-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
 
-                    <section class="countdown-bar">
-                        <div class="progress-info">
-                            <span class="days-label">距离下次见面</span>
-                            <span class="days-left" id="js-countdown">12 天 04 小时</span>
-                        </div>
-                        <div style="font-size: 22px;">🚄</div>
-                    </section>
+    <div class="sheetBody">
+        <div class="skill-list">
+            <button class="skill-card" id="open-ai-chat" type="button">
+                <div class="skill-card-header">
+                    <div class="skill-title-wrap">
+                        <div class="skill-title">情侣聊天</div>
+                        <div class="skill-subtitle">你们的日常对话</div>
+                    </div>
+                    <div class="skill-icon">💬</div>
                 </div>
+            </button>
+        </div>
 
-                <section class="chat-section">
-                    <div class="chat-header">
-                        <div class="chat-header-left">
-                            <span class="status-dot"></span>
-                            <span>恋爱管家 (DeepSeek)</span>
-                        </div>
-                        <button class="btn btn-ghost btn-small" id="chat-clear" type="button">清空</button>
-                    </div>
-
-                    <!-- 快捷回复 -->
-                    <div class="chips-row" id="js-chips">
-                        <button class="chip" data-text="快！我也看到了，她是不是又被工作气到了🥺">快！我也看到了</button>
-                        <button class="chip" data-text="我现在不讲道理，只想抱抱你🫶">只抱抱</button>
-                        <button class="chip" data-text="我给你点杯热的，好不好？">点杯热的</button>
-                        <button class="chip" data-text="要不要我现在打给你？">打给你</button>
-                    </div>
-
-                    <div class="chat-messages" id="js-chat-messages"></div>
-
-                    <div class="input-area-wrapper">
-                        <div class="input-box">
-                            <input id="js-input" type="text" placeholder="问问我怎么哄她..." />
-                            <button id="js-send" class="send-btn">➤</button>
-                        </div>
-                    </div>
-                </section>
+        <div class="skill-detail hidden" id="ai-chat-detail">
+            <div class="skill-detail-header">
+                <button class="btn btn-ghost btn-small" id="ai-chat-back" type="button">返回</button>
+                <div class="skill-detail-title">恋爱管家（AI）</div>
             </div>
+            <div class="skill-card">
+                <div class="skill-card-body">
+                    <div id="page-chat" class="page hidden">
+                        <div class="top-section-wrapper">
+                            <section class="mood-section">
+                                <div class="mood-emoji" id="js-mood-emoji">⛈️</div>
+                                <div class="mood-text">
+                                    <h3 id="js-mood-title">有点小雷暴</h3>
+                                    <p id="js-mood-subtitle">能量值 15% · 建议给她点个热奶茶</p>
+                                </div>
+                            </section>
 
-    
+                            <section class="countdown-bar">
+                                <div class="progress-info">
+                                    <span class="days-label">距离下次见面</span>
+                                    <span class="days-left" id="js-countdown">12 天 04 小时</span>
+                                </div>
+                                <div style="font-size: 22px;">🚄</div>
+                            </section>
+                        </div>
+
+                        <section class="chat-section">
+                            <div class="chat-header">
+                                <div class="chat-header-left">
+                                    <span class="status-dot"></span>
+                                    <span>恋爱管家 (DeepSeek)</span>
+                                </div>
+                                <button class="btn btn-ghost btn-small" id="chat-clear" type="button">清空</button>
+                            </div>
+
+                            <!-- 快捷回复 -->
+                            <div class="chips-row" id="js-chips">
+                                <button class="chip" data-text="快！我也看到了，她是不是又被工作气到了🥺">快！我也看到了</button>
+                                <button class="chip" data-text="我现在不讲道理，只想抱抱你🫶">只抱抱</button>
+                                <button class="chip" data-text="我给你点杯热的，好不好？">点杯热的</button>
+                                <button class="chip" data-text="要不要我现在打给你？">打给你</button>
+                            </div>
+
+                            <div class="chat-messages" id="js-chat-messages"></div>
+
+                            <div class="input-area-wrapper">
+                                <div class="input-box">
+                                    <input id="js-input" type="text" placeholder="问问我怎么哄她..." />
+                                    <button id="js-send" class="send-btn">➤</button>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -159,20 +186,12 @@
                     <div class="icon">📅</div>
                 </button>
 
-                <button class="home-action diary" id="home-go-diary" type="button">
+                <button class="home-action monster" id="home-go-monster" type="button">
                     <div class="left">
-                        <div class="title">共享时光轴</div>
-                        <div class="sub">记录小确幸</div>
+                        <div class="title">一起养怪兽</div>
+                        <div class="sub">养一只只属于你们的怪兽</div>
                     </div>
-                    <div class="icon">📝</div>
-                </button>
-
-                <button class="home-action settings" id="home-go-settings" type="button">
-                    <div class="left">
-                        <div class="title">偏好设置</div>
-                        <div class="sub">让 AI 更懂她</div>
-                    </div>
-                    <div class="icon">⚙️</div>
+                    <div class="icon">👾</div>
                 </button>
             </div>
         </div>
@@ -195,12 +214,6 @@
             </div>
         </div>
 
-        <div class="card" style="margin-bottom: 120px;">
-            <div class="card-title">🪄 最近的瞬间</div>
-            <div class="home-preview" id="home-timeline-preview">
-                <div class="muted">还没有记录，去时光轴写下第一个闪光瞬间吧～</div>
-            </div>
-        </div>
     </div>
 
 
@@ -269,28 +282,8 @@
         </div>
     </div>
 
-    <!-- ============ PAGE: DIARY / TIMELINE ============ -->
-    <div id="page-diary" class="page hidden">
-        <div class="card">
-            <div class="card-title">📝 共享时光轴</div>
-            <div class="muted">记录每一个闪光瞬间（今天版本：文字 + 时间，支持删除；只保存在本机）</div>
-
-            <div class="field-label">写一条</div>
-            <textarea class="textarea" id="tl-text" placeholder="比如：她今天说好累，我回了：不讲道理，只抱抱 🫶"></textarea>
-
-            <div class="spacer"></div>
-            <div class="row-wrap">
-                <button class="btn btn-primary" id="tl-add" type="button">发布瞬间</button>
-                <button class="btn btn-ghost btn-small" id="tl-add-from-mood" type="button">把当前状态写进时光轴</button>
-                <button class="btn btn-ghost btn-small" id="tl-clear" type="button">清空时光轴</button>
-            </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 120px;">
-            <div class="card-title">✨ 时间线</div>
-            <div id="tl-list"></div>
-        </div>
-    </div>
+    <!-- ============ PAGE: MONSTER ============ -->
+    <div id="page-monster" class="page hidden"></div>
 
     <!-- ============ PAGE: COUPLE CHAT ============ -->
     <div id="page-couple-chat" class="page hidden couple-chat-page">
@@ -434,7 +427,6 @@
                 <button class="btn btn-danger" id="st-wipe" type="button">清空全部数据</button>
             </div>
             <div class="spacer"></div>
-            <div class="muted">包含：状态、日历计划、时光轴、聊天记录、设置。</div>
         </div>
 
         <div class="card" style="margin-bottom: 120px;">
@@ -474,7 +466,7 @@
 <nav class="navbar">
     <button id="tab-home" class="nav-item active" type="button">🏠</button>
     <button id="tab-calendar" class="nav-item" type="button">📅</button>
-    <button id="tab-diary" class="nav-item" type="button">📝</button>
+    <button id="tab-monster" class="nav-item" type="button">👾</button>
     <button id="tab-chat" class="nav-item" type="button">💬</button>
     <button id="tab-settings" class="nav-item" type="button">⚙️</button>
 </nav>
